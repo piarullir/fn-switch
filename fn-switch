@@ -1,0 +1,149 @@
+#!/bin/bash
+#
+# fn-switch allows to switch through Fn key modes on keyboards using <hid_apple> kernel module
+#
+# Author: Raffaele Piarulli <raffaele@piarulli.me>
+# Github: www.github.com/piarullir
+
+FN_PARAM_FILE="/sys/module/hid_apple/parameters/fnmode"
+NOTIFY_ID_FILE="/tmp/.fnSwitch-notify.id"
+INSTALL_PATH="/usr/local/bin/"
+CURRENT_FN_VALUE="/tmp/.fnSwitch-value"
+DEFAULT_FN_VALUE=2
+
+# Force sudo mode
+if test "$(id -u)" -ne 0 ; then
+    sudo "$0" "$@"
+    exit $?
+fi
+
+function help {
+cat <<EOF
+
+Usage:
+  fn-switch PARAMETERS
+  
+Parameters:
+  -s | --set <value>    set fn mode
+  -S | --set-default    set fn mode to default value (2)
+  -g | --get            get fn mode
+  -w | --switch         switch through modes (1,2)
+  -n | --notify         send desktop notification
+
+Supported Values:
+  0 ->   disabled: disable the 'fn' key. Pressing 'fn'+'F8' will behave like you only press 'F8'
+  1 -> fkeyyslast: Pressing 'F8' key will act as a special key. Pressing 'fn'+'F8' will behave like a F8.
+  2 -> fkeysfirst: Pressing 'F8' key will behave like a F8. Pressing 'fn'+'F8' will act as special key.
+
+EOF
+
+exit 0
+}
+
+function getFnValue {
+    echo $(cat /sys/module/hid_apple/parameters/fnmode)
+}
+
+function writeParam {
+  local param=$1
+  if [ -f $FN_PARAM_FILE ]; then
+    echo $param > $FN_PARAM_FILE
+  else
+    echo "Can't find $FN_PARAM_FILE"
+    exit 1
+  fi
+}
+
+function setFnValue {
+  local val=$1
+  case "$val" in
+    0)writeParam $val && sendDesktopNotification "Disabled!";;
+    1)writeParam $val && sendDesktopNotification "Function Keys";;
+    2)writeParam $val && sendDesktopNotification "Special Keys";;
+    *)
+      echo "Wrong Value! (see --help)"
+      exit 1
+      ;;
+  esac
+}
+
+function switchMode {
+  local currentMode=$(getFnValue)
+  local nextMode=$currentMode
+  case "$currentMode" in
+    0) nextMode=1;;
+    1) nextMode=2;;
+    2) nextMode=1;;
+    *)
+      echo "Error detecting current mode!"
+      exit 1
+      ;;
+  esac
+  setFnValue $nextMode
+}
+
+function sendDesktopNotification {
+  local notify_id=1
+  if [ -f $NOTIFY_ID_FILE ]; then
+    notify_id=$(cat $NOTIFY_ID_FILE)
+  fi
+  if [ $NOTIFY -eq 1 ]; then
+    sudo -u $SUDO_USER DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$SUDO_UID/bus gdbus call \
+      --session \
+      --dest org.freedesktop.Notifications \
+      --object-path /org/freedesktop/Notifications \
+      --method org.freedesktop.Notifications.Notify \
+      "identifier" \
+      "$notify_id" \
+      "input-keyboard" \
+      "FnKey" \
+      "$1" \
+      "[]" \
+      "{}" \
+      "2000" | sed 's/[^ ]* //; s/,.//' > $NOTIFY_ID_FILE
+  fi
+}
+
+PARSED_OPTIONS=$(getopt -n "$0"  -o nSs:gw --long "help set: install uninstall set-default get switch notify" -- "$@")
+ 
+#Bad arguments, something has gone wrong with the getopt command.
+if [ $? -ne 0 ];
+then
+  exit 1
+fi
+ 
+# A little magic, necessary when using getopt.
+eval set -- "$PARSED_OPTIONS"
+
+NOTIFY=0
+OPERATION=""
+REQUESTED_FN_MODE=0
+ 
+while true;
+do
+  case "$1" in
+    -s | --set)
+      if [ -n "$2" ]; then
+        OPERATION="s"
+        REQUESTED_FN_MODE=$2
+      fi
+      shift 2;;
+
+    -S | --set-default)
+      OPERATION="S"
+      REQUESTED_FN_MODE=$DEFAULT_FN_VALUE
+      shift;;
+
+    -g|   --get)  OPERATION="g"; shift;;
+    -w|--switch)  OPERATION="w"; shift;;
+    -n|--notify)  NOTIFY=1; shift;;
+    -h|  --help)  help; shift;;
+    --)           shift; break;;
+  esac
+done
+
+case "$OPERATION" in
+  "g")        getFnValue;;
+  "S" | "s")  setFnValue $REQUESTED_FN_MODE;;
+  "w")        switchMode;;
+esac
