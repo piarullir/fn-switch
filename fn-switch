@@ -58,8 +58,8 @@ function setFnValue {
   local val=$1
   case "$val" in
     0)writeParam $val && sendDesktopNotification "Disabled!";;
-    1)writeParam $val && sendDesktopNotification "Function Keys";;
-    2)writeParam $val && sendDesktopNotification "Special Keys";;
+    1)writeParam $val && sendDesktopNotification "Special Keys";;
+    2)writeParam $val && sendDesktopNotification "Function Keys";;
     *)
       echo "Wrong Value! (see --help)"
       exit 1
