@@ -74,6 +74,7 @@ function switchMode {
     0) nextMode=1;;
     1) nextMode=2;;
     2) nextMode=1;;
+    3) nextMode=1;;
     *)
       echo "Error detecting current mode!"
       exit 1
